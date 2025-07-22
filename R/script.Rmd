@@ -1,0 +1,48 @@
+---
+title: "script"
+author: "Rujal Shrestha"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    theme: flatly
+    highlight: zenburn
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r libraries, include=FALSE}
+install.packages('e1071')
+
+# Import Libraries
+library(tidyverse)
+library(e1071)
+
+# Uncomment to hide code in output files
+# knitr::opts_chunk$set(echo = FALSE)
+
+# Increase scale of graph legends and text for high resolution screens
+theme_set(theme_minimal(base_size = 18))
+```
+
+```{r, CACHE = FALSE}
+?cars
+```
+
+### 
+
+```{r, CACHE = FALSE}
+
+getwd()
+setwd(paste0(getwd(), '/R'))
+```
+
+### 
+
+```{r, CACHE = FALSE}
+
+trainingRowIndex <- sample(1:nrow(cars), 0.8*nrow(cars))
+
+print(trainingRowIndex)
+print(-trainingRowIndex)
+```
+
