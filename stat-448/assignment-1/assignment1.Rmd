@@ -131,12 +131,6 @@ Geometrically speaking, there is no horizontal spread accross $X$ axis, due to w
 # Question 3
 
 ```{r}
-# setwd(paste0(getwd(), "/stat-448/assignment-1"))
-
-# getwd()
-```
-
-```{r}
 df <- read.csv("dataset/Student_Scores_Dataset.csv", header = TRUE)
 head(df)
 ```
@@ -219,9 +213,11 @@ df |>
 ```{r}
 new_x <- data.frame(Hours = c(3.63, 5.68, 7.48))
 
-predicted_scores <- predict(model, newdata = new_x)
+predicted_scores <- round(predict(model, newdata = new_x), 2)
 
-print(round(predicted_scores, 2))
+new_x$predicted_scores <- predicted_scores
+
+kable(new_x)
 ```
 
 It is not valid to make predictions outside of the hours of study range (or generally known as extrapolation) as the linear regression model was estimated using the provided data which might not be in similar trend outside of the range, due to which the model's predictions can end up varying.
@@ -252,9 +248,11 @@ plot_1 <- df |>
   theme(
     plot.caption = element_text(hjust = 0.5)
   )
+
+plot_1
 ```
 
-The association is clearly non-linear as illustrated by the rising, peaking and falling curve of the plot. The fertility grows as the macaque ages and peaks at around 9 years of age. Following this is a sharp declining as the macaques age and attaining minimal values at the end of 25 years.
+The association is clearly non-linear as illustrated by the rising, peaking and falling curve of the plot. The fertility grows as the macaque ages and peaks at around 9 years of age. Following this is a sharp declining as the macaques age and attaining minimal values at the end of 24 years.
 
 ## Question 4(b)
 
