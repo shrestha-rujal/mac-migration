@@ -1,11 +1,11 @@
 ---
-title: "Assignment 1"
-author: "Rujal Shrestha"
+title: "STAT-448"
+subtitle: "Assignment 1"
+author: "Rujal Shrestha - 29954403"
 date: '`r format(Sys.time(), "%d %B, %Y")`'
 output: pdf_document
-  # html_document:
-  #   theme: flatly
-  #   highlight: zenburn
+# documentclass: article
+classoption: titlepage
   
 ---
 
@@ -13,15 +13,15 @@ output: pdf_document
 # Import Libraries
 library(tidyverse)
 library(knitr)
-
-# Uncomment to hide code in output files
-# knitr::opts_chunk$set(echo = FALSE)
-
-# Increase scale of graph legends and text for high resolution screens
-# theme_set(theme_minimal(base_size = 18))
 ```
 
 # Question 1
+
+## Question 1(a and b)
+
+![](q1.jpg)
+
+![](q2.jpg)
 
 ## Question 1(c)
 
@@ -205,7 +205,11 @@ df |>
     title = "Regression plot for Scores vs hours studied",
     subtitle = expression(hat(y) == 6.530 + 9.763 * x)
   ) +
-  theme_light()
+  theme_light() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
 ```
 
 ## Question 3(g)
@@ -284,6 +288,7 @@ The plot suggests an inadequate fit. There is a curving trend on the points, whe
 
 ```{r, fig.width = 5, fig.height = 5, fig.align='center'}
 draw_residual_plot <- function(df) {
+  # nolint start
   ggplot(data = df, aes(x = fitted, y = residuals)) +
     geom_point() +
     geom_hline(yintercept = 0, color = "red", size = 2) +
@@ -297,6 +302,7 @@ draw_residual_plot <- function(df) {
     theme(
       plot.caption = element_text(hjust = 0.5)
     )
+  # nolint end
 }
 
 df_residuals <- data.frame(
@@ -311,14 +317,14 @@ The curved pattern in the residual plot above clearly indicates that this model 
 
 ## Question 4(d)
 
-```{r}
+```{r, fig.width = 5, fig.height = 5, fig.align='center'}
 plot_1 +
   geom_smooth(method = "lm", formula = y ~ x + I(x^2), se = FALSE)
 ```
 
 It makes sense to add a quadratic term of degree 2 to the equation to better fit the curve. After changing the equation to quadratic of degree 2, the model was able to fit the datapoints better. 
 
-```{r}
+```{r, fig.width = 5, fig.height = 5, fig.align='center'}
 quadratic_model <- lm(mean_fertility ~ age + I(age^2), data = df)
 
 summary(quadratic_model)
