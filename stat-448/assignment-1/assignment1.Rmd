@@ -47,6 +47,8 @@ x_t <- t(x)
 print(x_t)
 ```
 
+The matrix dimensions have changed from 3x2 to 2x3
+
 ```{r}
 x_t_x <- x_t %*% x
 
@@ -73,6 +75,8 @@ print(inv_x_t_x)
 b <- inv_x_t_x %*% x_t_y
 print(b)
 ```
+Which matches the figures from manual calcuations perfectly.
+
 
 Now, Calculating the estimates of residuals
 
@@ -100,6 +104,8 @@ print(df)
 model <- lm(y ~ x, data = df)
 summary(model)
 ```
+
+The coefficients match the earlier values exactly. But this method is extensively more convinient as all those efforts were easily abstracted within a few lines of code. Moreover, we get additional insights like R-squared, significance values too. According to the summary, the exploratory value seems to be very significant with a very small p-value.
 
 # Question 2
 
@@ -197,10 +203,15 @@ A point to be noted is the funneling line at the right end of the plot. This is 
 ## Question 3(f)
 
 ```{r, fig.width=5, fig.height=5, fig.align="center"}
+coefficients <- coef(model)
+
+beta_0 <- coefficients[1]
+beta_1 <- coefficients[2]
+
 df |>
   ggplot(aes(x = Hours, y = Scores)) +
   geom_point(size = 0.5) +
-  geom_smooth(method = "lm", formula = y ~ x) +
+  geom_abline(intercept = beta_0, slope = beta_1, color = "red", size = 1) +
   labs(
     title = "Regression plot for Scores vs hours studied",
     subtitle = expression(hat(y) == 6.530 + 9.763 * x)
@@ -354,3 +365,5 @@ df_new$predicted_mean_fertility <- predictions
 
 knitr::kable(df_new, caption = "Table: Predicted Fertility for Given Ages")
 ```
+
+The predicted value make sense even from eye-level examination, it was already evident from the summarization performed earlier that the fertility in female macaques peaked between 7 - 10 and started degrading after that. This trend can be seen in the above predictions, the higher the age, the lower the fertility fell.
