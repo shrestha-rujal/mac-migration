@@ -1,0 +1,314 @@
+---
+title: "STAT-4481"
+subtitle: "Assignment 2"
+author: "Rujal Shrestha - 29954403"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: pdf_document
+# documentclass: article
+classoption: titlepage
+  
+---
+
+```{r libraries, include=FALSE}
+# Import Libraries
+library(tidyverse)
+library(knitr)
+library(corrplot)
+library(GGally)
+library(MASS)
+library(glmnet)
+
+# helper function to calculate mse
+
+mse <- function(observed, predictions) mean((observed - predictions)^2)
+```
+
+```{r}
+# setwd(paste0(getwd(), "/assignment-2"))
+```
+
+# Question 1
+
+## Question 1(a)
+
+```{r}
+# creating new environment and loading data into it
+myenv <- new.env()
+load("./dataset/Residen.RData", envir = myenv)
+```
+
+```{r}
+df <- myenv[["Residen"]]
+```
+
+```{r}
+correlation <- cor(df)
+most_correlated <- sort(correlation[, "V104"], decreasing = TRUE)
+
+# only select the most extreme 25 correlated variables
+top_k <- 25
+
+extreme_correlated <- tibble(
+  var = names(most_correlated),
+  r = as.numeric(most_correlated)
+) |>
+  filter(var != "V104") |>
+  slice(c(1:top_k, (n() - top_k + 1):n())) |>
+  mutate(var = fct_reorder(var, r))
+```
+
+```{r, fig.width = 9, fig.height=9}
+extreme_correlated |>
+  ggplot(aes(r, var)) +
+  geom_col() +
+  labs(
+    title = "Figure 1: 25 Most correlated variables with Actual Sales Price (V104)",
+    x = "Pearson corrleation with V104",
+    y = NULL
+  )
+```
+
+The *Figure 1* displays the 50 most extreme correlating variables with the actual sales price. We can see that variables V-8(prior price of unit), V105 (Construction output), V-5 (estimated constrution cost) are some variables that correlated positively, which indicates that increase in these values have a direct positive impact on the actual sales prices. Furthermore, V1, V18, V37 correlated negatively, that is, lowers the actual sales price.
+
+```{r}
+top_vars <- names(head(most_correlated, 5))
+
+corrplot(cor(df[, top_vars]),
+  method = "color", type = "upper",
+  tl.cex = 0.7, tl.col = "black", mar = c(0, 0, 1, 0),
+  title = "Figure 2: Correlation heatmap of top 5 variables vs V104"
+)
+```
+
+The *Figure 2* represents a correlation heatmap of the top 5 variables positively correlated with V104. We can see a very strong correlation with V8 and moderately good correlation with V105, V5 and v80.
+
+## Question 1(b)
+
+```{r}
+model <- lm(data = df, as.formula("V104 ~ . -V105"))
+
+summary <- summary(model)
+
+summary
+```
+
+The following points can be extracted from the summary:
+
+
+1. The median (-1.50) is close to zero, which indicates that there is no bias as seen from the distribution of the residuals. The range is shows large deviations, with majority residing between 50 units on either side
+
+2. The most significant variables are completion year, completion quarter, V8, etc and 32 variables are shows as NA because of singularities.
+
+3. The model explains 99% of the variation in the prices, which is an indication of good or overfitted model. The adjusted R-squared 0.885 indicates a very explanation of variation after penalising predictors. Overall, the regression model fits the data extremely well with 32 coefficients dropped due to coliniearity. It seems that we can further progress into regularization methods to further improve the model as it seems the model is overfitted to the data.
+
+## Question 1(c)
+
+```{r}
+set.seed(42)
+
+n <- nrow(df)
+
+training_indexes <- sample(seq_len(n), size = floor(0.8 * n))
+
+train <- df[training_indexes, ]
+test <- df[-training_indexes, ]
+
+y_test <- test$V104
+```
+
+Training and testing backwards selection
+
+```{r, cache=TRUE}
+time_backwards <- system.time({
+  backwards_model <- stepAIC(
+    lm(as.formula("V104 ~ . - V105"), data = train),
+    direction = "backward",
+    trace = FALSE
+  )
+})
+
+backwards_predictions <- predict(backwards_model, newdata = test)
+backwards_mse <- mse(y_test, backwards_predictions)
+```
+
+Training and testing stepwise selection
+
+```{r, cache=TRUE}
+time_stepwise <- system.time({
+  stepwise_model <- stepAIC(
+    lm(V104 ~ 1, data = train),
+    scope = list(lower = ~1, upper = ~ . - V105),
+    direction = "both",
+    trace = FALSE
+  )
+})
+
+stepwise_predictions <- predict(stepwise_model, newdata = test)
+stepwise_mse <- mse(y_test, stepwise_predictions)
+```
+
+Now, we compare the above quantities in a new table
+```{r}
+output_table <- tibble(
+  Method = c("Backward", "Stepwise"),
+  Num_predictors = c(
+    length(coef(backwards_model)) - 1,
+    length(coef(stepwise_model)) - 1
+  ),
+  Mse = c(backwards_mse, stepwise_mse),
+  Time = c(time_backwards[3], time_stepwise[3])
+)
+
+kable(
+  output_table,
+  digits = 3,
+  col.names = c("Method", "Number of Predictors", "MSE", "Time"),
+  caption = "Comparison of backwards vs stepwise selection"
+)
+```
+
+The above *Table 1* compares outputs, computational time and mean square error for test set of the two selection methods. The backward selection method ended up with a more complex model with 38 predictors and a reasonably low error of  around 29,233 all within the span of 5.1 seconds, which is a moderate amount. 
+
+The stepwise selection on the other hand ended up with an extremely high error with over 2,295,678. It took nearly 0 seconds to compute, but this is reasonable considering that this model did not add any other predictors other than the intercept.
+
+Overall, the backward selection outperformed the stepwise selection and better explained the variation in actual sale prices. This might be due to the presence of strong multicollinearity.
+
+## Question 1(d)
+
+```{r, cache=TRUE}
+# exclude the intercept column as it is automatically added by glmnet
+x_train <- model.matrix(V104 ~ . - V105, data = train)[, -1]
+y_train <- train$V104
+
+x_test <- model.matrix(V104 ~ . - V105, data = test)[, -1]
+
+time_ridge <- system.time({
+  model_ridge <- cv.glmnet(x_train, y_train, alpha = 0, nfolds = 10)
+})
+
+time_lasso <- system.time({
+  model_lasso <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 10)
+})
+
+predictions_ridge <- predict(model_ridge, newx = x_test, s = "lambda.min")
+predictions_lasso <- predict(model_lasso, newx = x_test, s = "lambda.min")
+
+mse_ridge <- mse(y_test, predictions_ridge)
+mse_lasso <- mse(y_test, predictions_lasso)
+
+nz_ridge <- sum(coef(model_ridge, s = "lambda.min")[-1] != 0)
+nz_lasso <- sum(coef(model_lasso, s = "lambda.min")[-1] != 0)
+
+ridge_vs_lasso_table <- tibble(
+  Model = c("Ridge", "LASSO"),
+  lambda_min = c(model_ridge$lambda.min, model_lasso$lambda.min),
+  mse = c(mse_ridge, mse_lasso),
+  non_zero_predictors = c(nz_ridge, nz_lasso),
+  time = c(time_ridge[3], time_lasso[3])
+)
+
+kable(ridge_vs_lasso_table, caption = "Table 2: Ridge vs Lasso comparison")
+```
+
+From the *table 2*, it can be seen that the LASSO regression achieved a lower MSE on test data compared to ridge while reducing the number of predictors down to 29 only. LASSO regression not only provided better predictive accuracy, but also variable selection and in turn producing a more parsimonious model.
+
+## Question 1(e)
+
+From the outputs obtained above, LASSO performed best with the lowest error, minimal number of coefficients, obtaining a parsimonious model by performing variable selection. It was able to lower the predictors down to 29, removing any noise and irrelevant variables. This also got rid of multicollinear variables which would've otherwise abrupted the predictability of the model as well as increase the computation time. 
+
+Among the selection methods, though backward selection method produced a somewhat acceptable model with low error and 38 predictors, this model heavily relised on hypothesis testing and AIC, which can be unstable when multicollinearity is present. The stepwise selection model performed the worse with no predictors selected, this also showcased the limitation of stepwise predictors, where the model couldn't improve further from the null model. 
+
+From the regularization method, ridge couldn't reduce the precictors as much compared to LASSO, so due to the existance of irrelevant variables, a lot of noise was introduced, which resulted in a very high mean squared error of 113,093.
+
+# Question 2
+
+```{r}
+df <- read.csv("dataset/parkinsons.csv")
+
+set.seed(42)
+
+training_indexes <- sample(seq_len(nrow(df)), size = 30)
+
+train <- df[training_indexes, ]
+test <- df[-training_indexes, ]
+
+predictors <- paste0("X", 1:97)
+
+x_train <- scale(as.matrix(train[, predictors]))
+
+# Here, we are using the same mean and standard deviations from the training dataset to scale the test data so they have a similar scaled distribution
+train_center <- attr(x_train, "scaled:center")
+train_scale <- attr(x_train, "scaled:scale")
+
+x_test <- scale(
+  as.matrix(test[, predictors]),
+  center = train_center,
+  scale = train_scale
+)
+
+y_train <- train$UPDRS
+y_test <- test$UPDRS
+```
+
+The sampling was done with seed 42. Why 42? Cause it is the answer to life, the universe and everything.
+
+## Question 2(a)
+
+```{r, cache=TRUE}
+model <- lm(y_train ~ x_train)
+y_predicted <- predict(model)
+mse_trained <- mse(y_train, y_predicted)
+
+coefs <- coef(model)
+print(paste0("Non-zero coeffs: ", sum(coefs != 0 & !is.na(coefs))))
+
+mse_trained
+```
+
+The training MSE is essentially zero, which confirms that the model fit the training data perfectly. This is because there are very high number of predictors (97) compared to the number of observations (30), which is overparameterized with 30 coefficients and fits the training data perfectly. This is a classic case of overfitting where the model will have no bias with a very high variance. Due to which the model will not perform well with another set of data.
+
+## Question 2(b)
+
+```{r}
+set.seed(42)
+grid <- 10^seq(3, -1, length.out = 100)
+model_lasso <- cv.glmnet(
+  x_train,
+  y_train,
+  alpha = 1, # lasso regularization
+  nfolds = 30,
+  lambda = grid,
+  thresh = 1e-10,
+  standardize = FALSE
+)
+
+print(paste0("minimum lambda: ", model_lasso$lambda.min))
+
+predicted_test <- predict(model_lasso, newx = x_test, s = "lambda.min")
+test_mse <- mse(y_test, predicted_test)
+
+print(paste0("test mse: ", test_mse))
+
+coefs <- coef(model_lasso, s = "lambda.min")
+```
+
+```{r}
+nz_indexes <- which(coefs != 0)
+nz_predictors <- setdiff(rownames(coefs)[nz_indexes], "(Intercept)")
+
+print(paste0("Non-zero predictors: ", paste(nz_predictors, collapse = ", ")))
+```
+
+The optimal value of lambda is 0.643 and the resulting test MSE was 21.12.
+
+## Question 2(c)
+
+The LASSO model tuned with the specified settings was able to retain only 4 features (vs 30 using OLS) while shrinking other irrelevant ones to zero. This model is more parsimonious and generalized while yielding a very acceptable mse of 21.12 (compared to the ~0 MSE using OLS due to overfitting). Furthermore, it is also validated that the model was able to retain the X97 feature, which was stated to be informative. Overall, the LASSO improves predictive performance, enhances interpretability, a more sparse model with lesser variance and a more appropriate method for this setting.
+
+
+
+
+
+
+
+
