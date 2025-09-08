@@ -1,16 +1,14 @@
 ---
-title: "STAT-4481"
+title: "STAT-448"
 subtitle: "Assignment 2"
 author: "Rujal Shrestha - 29954403"
 date: '`r format(Sys.time(), "%d %B, %Y")`'
 output: pdf_document
-# documentclass: article
 classoption: titlepage
   
 ---
 
 ```{r libraries, include=FALSE}
-# Import Libraries
 library(tidyverse)
 library(knitr)
 library(corrplot)
@@ -18,13 +16,8 @@ library(GGally)
 library(MASS)
 library(glmnet)
 
-# helper function to calculate mse
-
+# we use this function to calculate MSE multiple times, so best abstracted to a global custom-made function.
 mse <- function(observed, predictions) mean((observed - predictions)^2)
-```
-
-```{r}
-# setwd(paste0(getwd(), "/assignment-2"))
 ```
 
 # Question 1
@@ -33,6 +26,7 @@ mse <- function(observed, predictions) mean((observed - predictions)^2)
 
 ```{r}
 # creating new environment and loading data into it
+# this avoids polluting the global environment when loading Rdata
 myenv <- new.env()
 load("./dataset/Residen.RData", envir = myenv)
 ```
@@ -45,7 +39,7 @@ df <- myenv[["Residen"]]
 correlation <- cor(df)
 most_correlated <- sort(correlation[, "V104"], decreasing = TRUE)
 
-# only select the most extreme 25 correlated variables
+# only select the most extreme 25 correlated variables on both ends
 top_k <- 25
 
 extreme_correlated <- tibble(
@@ -207,7 +201,7 @@ ridge_vs_lasso_table <- tibble(
   time = c(time_ridge[3], time_lasso[3])
 )
 
-kable(ridge_vs_lasso_table, caption = "Table 2: Ridge vs Lasso comparison")
+kable(ridge_vs_lasso_table, caption = "Ridge vs Lasso comparison")
 ```
 
 From the *table 2*, it can be seen that the LASSO regression achieved a lower MSE on test data compared to ridge while reducing the number of predictors down to 29 only. LASSO regression not only provided better predictive accuracy, but also variable selection and in turn producing a more parsimonious model.
@@ -306,9 +300,150 @@ The optimal value of lambda is 0.643 and the resulting test MSE was 21.12.
 The LASSO model tuned with the specified settings was able to retain only 4 features (vs 30 using OLS) while shrinking other irrelevant ones to zero. This model is more parsimonious and generalized while yielding a very acceptable mse of 21.12 (compared to the ~0 MSE using OLS due to overfitting). Furthermore, it is also validated that the model was able to retain the X97 feature, which was stated to be informative. Overall, the LASSO improves predictive performance, enhances interpretability, a more sparse model with lesser variance and a more appropriate method for this setting.
 
 
+# Question 3
 
+```{r}
+getwd()
+```
 
+```{r, cache = TRUE}
+weather <- read.csv("dataset/Weather_Station_data_v1.csv", header = TRUE)
 
+set.seed(42)
+train_idx <- sample(seq_len(nrow(weather)), size = floor(0.8 * nrow(weather)))
 
+train <- weather[train_idx, ]
+test <- weather[-train_idx, ]
 
+x_train <- model.matrix(MEAN_ANNUAL_RAINFALL ~ ., data = train)[, -1]
+x_test <- model.matrix(MEAN_ANNUAL_RAINFALL ~ ., data = test)[, -1]
 
+y_train <- train$MEAN_ANNUAL_RAINFALL
+y_test <- test$MEAN_ANNUAL_RAINFALL
+```
+
+```{r, cache = TRUE}
+alphas <- seq(0.1, 0.9, by = 0.1)
+
+cv_list <- lapply(alphas, function(a) {
+  set.seed(42)
+  cv.glmnet(x_train, y_train, alpha = a, nfolds = 10)
+})
+
+cv_errors <- sapply(cv_list, function(cv) min(cv$cvm))
+
+best_error_idx <- which.min(cv_errors)
+
+best_alpha <- alphas[best_error_idx]
+best_model <- cv_list[[best_error_idx]]
+
+print(paste0("Best alpha: ", best_alpha))
+print(paste0("Lambda MSE: ", best_model$lambda.min))
+print(paste0("Lambda 1SE: ", best_model$lambda.1se))
+```
+
+Here, we were able to obtain the best model with alpha of 0.1. The corresponding minimum mse was associated with lambda value of 4.72 and the generalized lambda 1SE of 33.27.
+
+```{r, fig.width = 8, fig.height = 4}
+colors <- scales::hue_pal()(length(alphas))
+
+plot(
+  NULL,
+  xlab = expression(log(lambda)),
+  ylab = "Mean Squared Error",
+  xlim = range(log(cv_list[[1]]$lambda)),
+  ylim = range(cv_errors)
+)
+
+for (i in seq_along(alphas)) {
+  with(cv_list[[i]], lines(log(lambda), cvm, col = colors[i], lwd = 2))
+}
+
+legend(
+  "topright",
+  legend = paste0(
+    "alpha=",
+    alphas
+  ),
+  col = colors,
+  lwd = 2,
+  cex = .8
+)
+
+title("Figure 3: Elastic Net 10-fold across alpha and lambda")
+
+abline(v = log(best_model$lambda.min), lty = 2)
+```
+
+The *figure 3* displays characteristics of all the values of alpha in the cross validation. The red line (associated with alpha = 0.1) stoops lowest, portraying the lowest MSE at lambda = 4.72, (or log(4.72) = ~1.55 as shown in the graph).
+
+Now, comparing models using **lambda.min** and **lambda.1se**.
+
+```{r}
+# for lambda.min
+
+model_min <- glmnet(
+  x_train,
+  y_train,
+  alpha = best_alpha,
+  lambda = best_model$lambda.min
+)
+
+model_1se <- glmnet(
+  x_train,
+  y_train,
+  alpha = best_alpha,
+  lambda = best_model$lambda.1se
+)
+
+predictions_min <- drop(predict(model_min, newx = x_test))
+predictions_1se <- drop(predict(model_1se, newx = x_test))
+
+mse_min <- mse(y_test, predictions_min)
+mse_1se <- mse(y_test, predictions_1se)
+
+rmse_min <- sqrt(mse_min)
+rmse_1se <- sqrt(mse_1se)
+
+coefs_min <- coef(model_min)
+coefs_1se <- coef(model_1se)
+
+nz_min <- sum(coefs_min[-1] != 0)
+nz_1se <- sum(coefs_1se[-1] != 0)
+
+min_vs_1se_table <- tibble(
+  Model = c("lambda.min", "lambda.1se"),
+  alpha = best_alpha,
+  lambda = c(best_model$lambda.min, best_model$lambda.1se),
+  mse = c(mse_min, mse_1se),
+  rmse = c(rmse_min, rmse_1se),
+  predictors = c(nz_min, nz_1se)
+)
+
+kable(min_vs_1se_table, caption = "lambda.min vs lambda.1se")
+```
+
+The *Table 3* illustrates the lambda value, RMSE/MSE and number of predictors for both models. The **lambda.min** model has the best accuracy, but is more complex with two additional coefficients. On the other hand, the **lambda.1se** model fits a sparser model with only 11 precitors and a slightly inaccurate model.
+
+```{r}
+get_nz_coefs <- function(model) {
+  cf <- coef(model)
+  nz <- which(cf != 0)
+  kable(tibble(
+    Predictor = rownames(cf)[nz],
+    Coefficient = as.numeric(cf[nz])
+  ) %>% filter(Predictor != "(Intercept)"))
+}
+
+nz_coefs_min <- get_nz_coefs(model_min)
+nz_coefs_1se <- get_nz_coefs(model_1se)
+
+nz_coefs_min
+nz_coefs_1se
+```
+
+The above tables lists the coefficients of both models. The 1se, being a more sparse model, sacrificed two coefficients and a small accuracy for a more parsimonious and generalized model that will perform better than lambda.min model on unseen data as well.
+
+Overall, both the models provide comparable results with the **lambda.min** achieveing a marginally more accurate model. I would choose the **lambda.1se** model as it is simpler, more stable and less prone to overfitting with only 11 predictors (instead of 13), all while retaining a decently comparable accuracy (losing only 5 units of RMSE). Furthermore, despite having a worse accuracy, the model will perform better on unseen data better than **lambda.min**, which is comparatively overfitted to the dataset on hand.
+
+**LLM usage acknowledgement** There have been instances where guidance from ChatGPT was used, particularly to help understand data wrangling and model training steps. There were multiple concepts and R specific code blocks, issues that was best learned with the help of ChatGPT. That being said, all the code, comments and answers have been hand-typed after understanding and comprehensing in personal format.

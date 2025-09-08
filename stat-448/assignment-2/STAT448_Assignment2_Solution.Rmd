@@ -16,19 +16,19 @@ output:
 # Setup
 
 ```{r setup, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = TRUE, comment = '#>')
-set.seed(44801)   # global seed for reproducibility; questions also set their own
+knitr::opts_chunk$set(echo = TRUE, comment = "#>")
+set.seed(44801) # global seed for reproducibility; questions also set their own
 
 # Libraries
 library(tidyverse)
-library(readxl)
+# library(readxl)
 library(GGally)
 library(corrplot)
-library(MASS)     # stepAIC
-library(glmnet)   # ridge/lasso/elastic net
-library(caret)    # convenience
-library(broom)
-library(gridExtra)
+library(MASS) # stepAIC
+# library(glmnet)   # ridge/lasso/elastic net
+# library(caret)    # convenience
+# library(broom)
+# library(gridExtra)
 
 # Helper: mean squared error
 mse <- function(obs, pred) mean((obs - pred)^2)
@@ -47,10 +47,12 @@ Target: **Actual sales price** `V104` (exclude `V105` actual construction costs)
 # Load the data frame from Residen.RData.
 # The .RData contains an object with R-friendly names (V1..).
 env <- new.env()
-load('Residen.RData', envir = env)
+load("dataset/Residen.RData", envir = env)
 obj_name <- ls(env)[1]
 df <- env[[obj_name]]
 str(df[, 1:10])
+
+head(df)
 ```
 
 ```{r q1-corr, fig.width=8, fig.height=6}
@@ -65,20 +67,25 @@ target_cors <- sort(cors[, "V104"], decreasing = TRUE)
 top_k <- 20
 tib <- tibble(var = names(target_cors), r = as.numeric(target_cors)) |>
   filter(var != "V104") |>
-  slice(c(1:top_k, (n()-top_k+1):n())) |>
+  slice(c(1:top_k, (n() - top_k + 1):n())) |>
   mutate(var = fct_reorder(var, r))
 
-ggplot(tib, aes(r, var)) + geom_col() +
-  labs(title = "Top positive/negative correlations with V104 (Actual sales price)",
-       x = "Pearson correlation with V104", y = NULL)
+ggplot(tib, aes(r, var)) +
+  geom_col() +
+  labs(
+    title = "Top positive/negative correlations with V104 (Actual sales price)",
+    x = "Pearson correlation with V104", y = NULL
+  )
 ```
 
 ```{r q1-corrplot, fig.width=8, fig.height=8}
 # Corrplot of a manageable subset (top 25 by |cor| with V104)
 top_vars <- names(head(sort(abs(cors[, "V104"]), decreasing = TRUE), 25))
-corrplot(cor(num_df[, top_vars]), method = "color", type = "upper",
-         tl.cex = 0.7, tl.col = "black", mar = c(0,0,1,0),
-         title = "Correlation heatmap of top 25 variables vs V104")
+corrplot(cor(num_df[, top_vars]),
+  method = "color", type = "upper",
+  tl.cex = 0.7, tl.col = "black", mar = c(0, 0, 1, 0),
+  title = "Correlation heatmap of top 25 variables vs V104"
+)
 ```
 
 Optionally, a quick scatter‑matrix for the strongest 6 predictors:
@@ -108,9 +115,9 @@ smry
 ```{r q1c-split}
 set.seed(44801)
 n <- nrow(df)
-idx_tr <- sample(seq_len(n), size = floor(0.8*n))
+idx_tr <- sample(seq_len(n), size = floor(0.8 * n))
 train <- df[idx_tr, ]
-test  <- df[-idx_tr, ]
+test <- df[-idx_tr, ]
 
 y_te <- test$V104
 ```
@@ -119,14 +126,16 @@ y_te <- test$V104
 # Backward selection starting from the full model
 t_back <- system.time({
   mod_back <- stepAIC(lm(V104 ~ . - V105, data = train),
-                      direction = "backward", trace = FALSE)
+    direction = "backward", trace = FALSE
+  )
 })
 
 # Stepwise selection (both directions) using null and full scope
 t_step <- system.time({
   mod_step <- stepAIC(lm(V104 ~ 1, data = train),
-                      scope = list(lower = ~1, upper = ~ . - V105),
-                      direction = "both", trace = FALSE, data = train)
+    scope = list(lower = ~1, upper = ~ . - V105),
+    direction = "both", trace = FALSE, data = train
+  )
 })
 
 # Test MSEs
@@ -135,10 +144,12 @@ pred_step <- predict(mod_step, newdata = test)
 mse_back <- mse(y_te, pred_back)
 mse_step <- mse(y_te, pred_step)
 
-tibble(Method = c("Backward", "Stepwise"),
-       Predictors = c(length(coef(mod_back)) - 1, length(coef(mod_step)) - 1),
-       Test_MSE = c(mse_back, mse_step),
-       Elapsed_sec = c(t_back[3], t_step[3]))
+tibble(
+  Method = c("Backward", "Stepwise"),
+  Predictors = c(length(coef(mod_back)) - 1, length(coef(mod_step)) - 1),
+  Test_MSE = c(mse_back, mse_step),
+  Elapsed_sec = c(t_back[3], t_step[3])
+)
 ```
 
 ## 1(d) Ridge vs LASSO (10‑fold CV)
@@ -160,30 +171,34 @@ time_lasso <- system.time({
 })
 
 # Test set performance at lambda.min
-pred_ridge <- predict(cv_ridge, newx = x_te, s = 'lambda.min')
-pred_lasso <- predict(cv_lasso, newx = x_te, s = 'lambda.min')
+pred_ridge <- predict(cv_ridge, newx = x_te, s = "lambda.min")
+pred_lasso <- predict(cv_lasso, newx = x_te, s = "lambda.min")
 
 mse_ridge <- mse(y_te, pred_ridge)
 mse_lasso <- mse(y_te, pred_lasso)
 
 # Number of non-zero coefficients at lambda.min
-nz_ridge <- sum(coef(cv_ridge, s = 'lambda.min')[-1] != 0)
-nz_lasso <- sum(coef(cv_lasso, s = 'lambda.min')[-1] != 0)
+nz_ridge <- sum(coef(cv_ridge, s = "lambda.min")[-1] != 0)
+nz_lasso <- sum(coef(cv_lasso, s = "lambda.min")[-1] != 0)
 
-tibble(Model = c('Ridge', 'LASSO'),
-       lambda_min = c(cv_ridge$lambda.min, cv_lasso$lambda.min),
-       Test_MSE = c(mse_ridge, mse_lasso),
-       Nonzero = c(nz_ridge, nz_lasso),
-       Elapsed_sec = c(time_ridge[3], time_lasso[3]))
+tibble(
+  Model = c("Ridge", "LASSO"),
+  lambda_min = c(cv_ridge$lambda.min, cv_lasso$lambda.min),
+  Test_MSE = c(mse_ridge, mse_lasso),
+  Nonzero = c(nz_ridge, nz_lasso),
+  Elapsed_sec = c(time_ridge[3], time_lasso[3])
+)
 ```
 
 You can also visualise the CV curves:
 
 ```{r q1d-plots, fig.width=12, fig.height=4, echo=FALSE}
-par(mfrow = c(1,2))
-plot(cv_ridge); title('Ridge CV', line = 2.5)
-plot(cv_lasso); title('LASSO CV', line = 2.5)
-par(mfrow = c(1,1))
+par(mfrow = c(1, 2))
+plot(cv_ridge)
+title("Ridge CV", line = 2.5)
+plot(cv_lasso)
+title("LASSO CV", line = 2.5)
+par(mfrow = c(1, 1))
 ```
 
 ## 1(e) Discussion
@@ -200,9 +215,9 @@ par(mfrow = c(1,1))
 `parkinsons.csv` contains 42 patients. Outcome **UPDRS**; features **X1–X96** derived from audio; **X97** known informative. We standardize features so coefficient magnitudes are comparable.
 
 ```{r q2-load-split}
-pk <- read.csv('parkinsons.csv')
-Xnames <- paste0('X', 1:97)
-stopifnot(all(c('UPDRS', Xnames) %in% names(pk)))
+pk <- read.csv("parkinsons.csv")
+Xnames <- paste0("X", 1:97)
+stopifnot(all(c("UPDRS", Xnames) %in% names(pk)))
 
 set.seed(44830)
 idx_tr <- sample(seq_len(nrow(pk)), size = 30)
@@ -211,7 +226,8 @@ te <- pk[-idx_tr, ]
 
 # Standardize using training stats
 X_tr <- scale(as.matrix(tr[, Xnames]))
-ctr <- attr(X_tr, 'scaled:center'); scl <- attr(X_tr, 'scaled:scale')
+ctr <- attr(X_tr, "scaled:center")
+scl <- attr(X_tr, "scaled:scale")
 X_te <- scale(as.matrix(te[, Xnames]), center = ctr, scale = scl)
 y_tr <- tr$UPDRS
 y_te <- te$UPDRS
@@ -233,10 +249,12 @@ train_mse
 ```{r q2b}
 set.seed(44830)
 grid <- 10^seq(3, -1, length.out = 100)
-cv_lasso <- cv.glmnet(X_tr, y_tr, alpha = 1, nfolds = 30,
-                      lambda = grid, thresh = 1e-10, standardize = FALSE)
+cv_lasso <- cv.glmnet(X_tr, y_tr,
+  alpha = 1, nfolds = 30,
+  lambda = grid, thresh = 1e-10, standardize = FALSE
+)
 cv_lasso$lambda.min
-pred_te <- predict(cv_lasso, newx = X_te, s = 'lambda.min')
+pred_te <- predict(cv_lasso, newx = X_te, s = "lambda.min")
 test_mse <- mse(y_te, pred_te)
 test_mse
 ```
@@ -251,9 +269,9 @@ test_mse
 ## 2(c) Final model & conclusions
 
 ```{r q2c}
-co <- coef(cv_lasso, s = 'lambda.min')
+co <- coef(cv_lasso, s = "lambda.min")
 sel <- rownames(co)[which(co != 0)]
-length(sel) - 1  # without intercept
+length(sel) - 1 # without intercept
 co[co != 0]
 ```
 
@@ -268,17 +286,17 @@ co[co != 0]
 We fit an **Elastic Net** using 10‑fold CV to select both alpha and lambda.
 
 ```{r q3-load-split}
-wx <- read.csv('Weather_Station_data_v1.csv')
+wx <- read.csv("Weather_Station_data_v1.csv")
 
 set.seed(44820)
-idx_tr <- sample(seq_len(nrow(wx)), size = floor(0.8*nrow(wx)))
+idx_tr <- sample(seq_len(nrow(wx)), size = floor(0.8 * nrow(wx)))
 tr <- wx[idx_tr, ]
 te <- wx[-idx_tr, ]
 
 y_tr <- tr$MEAN_ANNUAL_RAINFALL
 y_te <- te$MEAN_ANNUAL_RAINFALL
-x_tr <- model.matrix(MEAN_ANNUAL_RAINFALL ~ . , data = tr)[, -1]
-x_te <- model.matrix(MEAN_ANNUAL_RAINFALL ~ . , data = te)[, -1]
+x_tr <- model.matrix(MEAN_ANNUAL_RAINFALL ~ ., data = tr)[, -1]
+x_te <- model.matrix(MEAN_ANNUAL_RAINFALL ~ ., data = te)[, -1]
 ```
 
 ## 3.1 Cross‑validate over alpha and lambda
@@ -301,9 +319,11 @@ best_cv$lambda.1se
 
 ```{r q3-plot, fig.width=10, fig.height=6}
 cols <- scales::hue_pal()(length(alphas))
-par(mfrow = c(1,1))
-plot(NULL, xlab = expression(log(lambda)), ylab = "CV MSE",
-     xlim = range(log(cv_list[[1]]$lambda)), ylim = range(sapply(cv_list, function(cv) cv$cvm)))
+par(mfrow = c(1, 1))
+plot(NULL,
+  xlab = expression(log(lambda)), ylab = "CV MSE",
+  xlim = range(log(cv_list[[1]]$lambda)), ylim = range(sapply(cv_list, function(cv) cv$cvm))
+)
 for (i in seq_along(alphas)) {
   with(cv_list[[i]], lines(log(lambda), cvm, col = cols[i], lwd = 2))
 }
@@ -315,25 +335,27 @@ abline(v = log(best_cv$lambda.min), lty = 3)
 ## 3.2 Test performance and coefficients
 
 ```{r q3-test}
-fit_min  <- glmnet(x_tr, y_tr, alpha = best_alpha, lambda = best_cv$lambda.min)
-fit_1se  <- glmnet(x_tr, y_tr, alpha = best_alpha, lambda = best_cv$lambda.1se)
+fit_min <- glmnet(x_tr, y_tr, alpha = best_alpha, lambda = best_cv$lambda.min)
+fit_1se <- glmnet(x_tr, y_tr, alpha = best_alpha, lambda = best_cv$lambda.1se)
 
 pred_min <- drop(predict(fit_min, newx = x_te))
 pred_1se <- drop(predict(fit_1se, newx = x_te))
 
-mse_min  <- mse(y_te, pred_min)
-mse_1se  <- mse(y_te, pred_1se)
+mse_min <- mse(y_te, pred_min)
+mse_1se <- mse(y_te, pred_1se)
 
-coefs_min  <- coef(fit_min)
-coefs_1se  <- coef(fit_1se)
-nz_min  <- sum(coefs_min[-1] != 0)
-nz_1se  <- sum(coefs_1se[-1] != 0)
+coefs_min <- coef(fit_min)
+coefs_1se <- coef(fit_1se)
+nz_min <- sum(coefs_min[-1] != 0)
+nz_1se <- sum(coefs_1se[-1] != 0)
 
-tibble(Model = c('lambda.min', 'lambda.1se'),
-       alpha = best_alpha,
-       lambda = c(best_cv$lambda.min, best_cv$lambda.1se),
-       Test_MSE = c(mse_min, mse_1se),
-       Nonzero = c(nz_min, nz_1se))
+tibble(
+  Model = c("lambda.min", "lambda.1se"),
+  alpha = best_alpha,
+  lambda = c(best_cv$lambda.min, best_cv$lambda.1se),
+  Test_MSE = c(mse_min, mse_1se),
+  Nonzero = c(nz_min, nz_1se)
+)
 ```
 
 **Example from my run (seed = 44820)**  
@@ -346,7 +368,7 @@ tibble(Model = c('lambda.min', 'lambda.1se'),
 
 ```{r q3-coefs-example, echo=FALSE}
 # Show non-zero coefficients for reference
-print(coef(fit_min)[coef(fit_min)!=0])
+print(coef(fit_min)[coef(fit_min) != 0])
 ```
 
 ## 3.3 Choice of model
